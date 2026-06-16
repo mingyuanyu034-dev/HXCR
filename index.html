@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>深蓝·冲日凌日 · 事件去重版</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #040b18; font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; color: #d0e4ff; }
+        .app-container { max-width: 1440px; width: 100%; background: #0a1530cc; backdrop-filter: blur(12px); border-radius: 40px; padding: 28px; box-shadow: 0 40px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px #2a4a8a inset; }
+        .grid-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; align-items: start; }
+        
+        .canvas-wrapper { background: #060d22; border-radius: 32px; padding: 12px; box-shadow: 0 0 0 1px #2a4a8a inset; }
+        canvas { display: block; width: 100%; aspect-ratio: 1/1; background: #020814; border-radius: 24px; cursor: pointer; }
+
+        .right-panel { display: flex; flex-direction: column; gap: 20px; }
+        .header-title { font-weight: 500; font-size: 1.8rem; background: linear-gradient(135deg, #b3d0ff, #6d8cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .mode-group { display: flex; gap: 12px; }
+        .mode-btn { flex: 1; background: #14264a; border: 1px solid #2f4f8a; color: #d0e4ff; padding: 10px 16px; border-radius: 60px; font-weight: 600; cursor: pointer; transition: 0.2s; text-align: center; }
+        .mode-btn.active { background: #2f5aae; color: #fff; border-color: #8aacff; box-shadow: 0 0 30px #3a6adf60; }
+
+        .info-card { background: #0a1230e0; border-radius: 28px; padding: 18px 24px; border: 1px solid #2a4a7a; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .info-item { display: flex; align-items: center; gap: 8px; }
+        .info-label { font-size: 0.8rem; color: #7f9fd6; }
+        .info-value { background: #0f1a3a; padding: 4px 18px; border-radius: 40px; border: 1px solid #4a6aae; color: #d0e4ff; font-weight: 500; }
+        .info-value.special { background: #2f5aae; border-color: #8aacff; animation: pulse-glow 1.2s infinite alternate; }
+        @keyframes pulse-glow { 0% { box-shadow: 0 0 8px #4a7aff; } 100% { box-shadow: 0 0 30px #4a7aff; } }
+
+        .pos-indicator { display: flex; gap: 8px; flex-wrap: wrap; background: #060d22; border-radius: 40px; padding: 10px 14px; border: 1px solid #2a4a7a; justify-content: center; }
+        .pos-tag { background: #0f1a3a; padding: 4px 14px; border-radius: 30px; font-size: 0.8rem; color: #b0c8ff; border: 1px solid #3a5a9a; }
+        .pos-tag.active-tag { background: #2f5aae; color: white; border-color: #8aacff; box-shadow: 0 0 20px #3a6adf; }
+
+        .control-row { display: flex; flex-wrap: wrap; gap: 12px; background: #0a1230; border-radius: 50px; padding: 12px 20px; border: 1px solid #2a4a7a; align-items: center; }
+        .control-row input[type="range"] { flex: 2; height: 4px; -webkit-appearance: none; background: #2a4a8a; border-radius: 10px; }
+        .control-row input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #6d8cff; border-radius: 50%; border: 2px solid #b3ceff; box-shadow: 0 0 20px #4a7aff; }
+        .action-btn { background: #1e3060; border: 1px solid #3a5a9a; color: #d0e4ff; padding: 6px 18px; border-radius: 60px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.85rem; }
+        .action-btn:hover { background: #2f4f8a; border-color: #7a9eff; }
+
+        .speed-control { display: flex; align-items: center; gap: 8px; background: #0f1a3a; padding: 2px 12px; border-radius: 60px; border: 1px solid #3a5a9a; }
+        .speed-control span { color: #b0c8ff; font-size: 0.8rem; }
+        .date-range { display: flex; align-items: center; gap: 8px; background: #060d22; padding: 4px 10px; border-radius: 40px; border: 1px solid #2a4a7a; }
+        .date-range input { background: #0f1a3a; border: 1px solid #3a5a9a; color: #d0e4ff; padding: 4px 8px; border-radius: 30px; font-size: 0.8rem; }
+
+        .calc-box { background: #060d22e0; backdrop-filter: blur(8px); border-radius: 24px; padding: 16px 22px; border: 1px solid #2f5a9a; display: none; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: #b8d4ff; position: relative; margin-top: 6px; }
+        .calc-box.show { display: block; animation: fadeSlide 0.3s; }
+        @keyframes fadeSlide { 0% { opacity: 0; transform: translateY(-8px); } 100% { opacity: 1; transform: translateY(0); } }
+        .calc-box .close-calc { position: absolute; top: 6px; right: 14px; cursor: pointer; opacity: 0.6; }
+        .calc-box .close-calc:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="header-title">✦ 深蓝 · 冲日凌日 · 事件去重</div>
+    <div class="grid-layout">
+        <div class="canvas-wrapper">
+            <canvas id="simCanvas" width="800" height="800"></canvas>
+        </div>
+        <div class="right-panel">
+            <div class="mode-group">
+                <button class="mode-btn active" data-mode="opposition">🔴 火星冲日</button>
+                <button class="mode-btn" data-mode="transit">🌑 金星凌日</button>
+            </div>
+            <div class="info-card">
+                <div class="info-item"><span class="info-label">状态</span><span class="info-value" id="statusDisplay">常规</span></div>
+                <div class="info-item"><span class="info-label">距离</span><span class="info-value" id="distanceDisplay">0.52 AU</span></div>
+                <div class="info-item"><span class="info-label">日期</span><span class="info-value special" id="dateDisplay">2026-06-16</span></div>
+            </div>
+            <div class="pos-indicator">
+                <span style="color:#7f9fd6;font-size:0.8rem;">📍 共线位置</span>
+                <span class="pos-tag" id="pos1">火星-地球-太阳</span>
+                <span class="pos-tag" id="pos2">火星-太阳-地球</span>
+                <span class="pos-tag" id="pos3">地球-太阳-火星</span>
+                <span class="pos-tag" id="pos4">太阳-地球-火星</span>
+            </div>
+
+            <div class="control-row">
+                <input type="range" id="timeSlider" min="0" max="1000" value="500" step="0.1">
+                <span class="time-label" id="dayCounter" style="color:#d0e4ff;min-width:90px;text-align:center;">Day 0</span>
+                <button class="action-btn" id="playPauseBtn">▶ 自动</button>
+                <button class="action-btn" id="resetBtn">⟲ 重置</button>
+                <button class="action-btn" id="predictBtn">🔎 预测</button>
+            </div>
+
+            <div class="control-row" style="justify-content:space-between;">
+                <div class="speed-control">
+                    <span>速度</span>
+                    <input type="range" id="speedSlider" min="1" max="200" step="1" value="30">
+                    <span id="speedDisplay">30</span>
+                    <span style="font-size:0.6rem;">天/秒</span>
+                </div>
+                <div class="date-range">
+                    <span>范围</span>
+                    <input type="date" id="startDate" value="2026-06-01">
+                    <span>→</span>
+                    <input type="date" id="endDate" value="2035-09-15">
+                    <button class="action-btn" id="applyRangeBtn" style="padding:2px 12px;">应用</button>
+                </div>
+            </div>
+
+            <div class="calc-box" id="calcBox">
+                <span class="close-calc" id="calcClose">✕</span>
+                <div style="font-weight:600;color:#8aacff;margin-bottom:4px;">📐 事件详情</div>
+                <div id="calcContent" style="white-space:pre-wrap;line-height:1.6;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    (function() {
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const w = 800, h = 800;
+        canvas.width = w; canvas.height = h;
+
+        // DOM
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const distanceDisplay = document.getElementById('distanceDisplay');
+        const dateDisplay = document.getElementById('dateDisplay');
+        const timeSlider = document.getElementById('timeSlider');
+        const dayCounter = document.getElementById('dayCounter');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const predictBtn = document.getElementById('predictBtn');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const applyRangeBtn = document.getElementById('applyRangeBtn');
+        const calcBox = document.getElementById('calcBox');
+        const calcContent = document.getElementById('calcContent');
+        const calcClose = document.getElementById('calcClose');
+        const posTags = { pos1: document.getElementById('pos1'), pos2: document.getElementById('pos2'), pos3: document.getElementById('pos3'), pos4: document.getElementById('pos4') };
+
+        // 天文常量
+        const AU = 180;
+        const SUN_RADIUS = 28, EARTH_RADIUS = 12, MARS_RADIUS = 10, VENUS_RADIUS = 11;
+        const EARTH_ORBIT = 1.0, MARS_ORBIT = 1.524, VENUS_ORBIT = 0.723;
+        const EARTH_PERIOD = 365.25, MARS_PERIOD = 687.0, VENUS_PERIOD = 224.7;
+
+        let currentMode = 'opposition';
+        let earthAngle = 0, marsAngle = 0.8, venusAngle = 2.1;
+
+        // 动画状态
+        let isPlaying = false;
+        let animFrameId = null;
+        let animDay = 0;
+        let animDirection = 1;
+        let rangeStartDay = -15, rangeEndDay = 365;
+        let speedDaysPerSec = 30.0;
+
+        // 事件去重状态：记住上次的事件状态
+        let lastEventState = false;
+
+        // 核心函数
+        function updateAngles(day) {
+            const wE = 2 * Math.PI / EARTH_PERIOD, wM = 2 * Math.PI / MARS_PERIOD, wV = 2 * Math.PI / VENUS_PERIOD;
+            const initEarth = 0, initMars = 0.8, initVenus = 2.1;
+            earthAngle = initEarth + wE * day;
+            marsAngle = initMars + wM * day;
+            venusAngle = initVenus + wV * day;
+        }
+        function getPos(radiusAU, angle) { const r = radiusAU * AU; return { x: w/2 + r * Math.cos(angle), y: h/2 + r * Math.sin(angle) }; }
+        
+        function getPositionType(earthAngle, targetAngle) {
+            let diff = Math.abs(earthAngle - targetAngle);
+            diff = Math.min(diff, 2*Math.PI - diff);
+            let sep = Math.abs(earthAngle - targetAngle);
+            sep = Math.min(sep, 2*Math.PI - sep);
+            const sunInMiddle = (sep > 2.8 && sep < 3.5);
+            const earthInMiddle = (diff < 0.20);
+            if (earthInMiddle) return '地球在中间';
+            if (sunInMiddle) return '太阳在中间';
+            return '其他';
+        }
+
+        function drawScene(day) {
+            updateAngles(day);
+            const sunPos = { x: w/2, y: h/2 };
+            const earthPos = getPos(EARTH_ORBIT, earthAngle);
+            const marsPos = getPos(MARS_ORBIT, marsAngle);
+            const venusPos = getPos(VENUS_ORBIT, venusAngle);
+
+            ctx.clearRect(0, 0, w, h);
+            // 轨道
+            ctx.strokeStyle = '#2a3f7a';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([4, 6]);
+            [EARTH_ORBIT, MARS_ORBIT, VENUS_ORBIT].forEach(r => {
+                ctx.beginPath();
+                ctx.arc(w/2, h/2, r * AU, 0, 2*Math.PI);
+                ctx.strokeStyle = '#2f4a7a';
+                ctx.stroke();
+            });
+            ctx.setLineDash([]);
+
+            // 太阳
+            const grad = ctx.createRadialGradient(sunPos.x-6, sunPos.y-6, 6, sunPos.x, sunPos.y, SUN_RADIUS+16);
+            grad.addColorStop(0, '#ffe88a'); grad.addColorStop(0.6, '#f5b342'); grad.addColorStop(1, '#d47b1a');
+            ctx.shadowColor = '#f5b342'; ctx.shadowBlur = 30;
+            ctx.beginPath(); ctx.arc(sunPos.x, sunPos.y, SUN_RADIUS, 0, 2*Math.PI); ctx.fillStyle = grad; ctx.fill();
+            ctx.shadowBlur = 0;
+
+            function drawPlanet(pos, radius, color, glowColor, label) {
+                ctx.shadowColor = glowColor; ctx.shadowBlur = 18;
+                ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, 2*Math.PI); ctx.fillStyle = color; ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.beginPath(); ctx.arc(pos.x-3, pos.y-3, radius*0.3, 0, 2*Math.PI); ctx.fillStyle = '#fff9e6'; ctx.fill();
+                ctx.font = '13px "Segoe UI", sans-serif'; ctx.fillStyle = '#b8d0ff'; ctx.fillText(label, pos.x + radius+8, pos.y-6);
+            }
+            drawPlanet(earthPos, EARTH_RADIUS, '#4a9eff', '#4a9eff', '地球');
+            if (currentMode === 'opposition') drawPlanet(marsPos, MARS_RADIUS, '#e67a4a', '#d45a2a', '火星');
+            else drawPlanet(venusPos, VENUS_RADIUS, '#e6d68a', '#c9b86a', '金星');
+
+            // 连线
+            let primaryPos = earthPos;
+            let secondaryPos = (currentMode === 'opposition') ? marsPos : venusPos;
+            ctx.beginPath(); ctx.moveTo(sunPos.x, sunPos.y); ctx.lineTo(primaryPos.x, primaryPos.y);
+            ctx.strokeStyle = '#6d8cff30'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(primaryPos.x, primaryPos.y); ctx.lineTo(secondaryPos.x, secondaryPos.y);
+            ctx.strokeStyle = '#8aacff50'; ctx.lineWidth = 1.8; ctx.stroke();
+
+            const targetAngle = (currentMode === 'opposition') ? marsAngle : venusAngle;
+            let diff = Math.abs(earthAngle - targetAngle);
+            diff = Math.min(diff, 2*Math.PI - diff);
+            const isEvent = (diff < 0.04);
+
+            let distAU = 0;
+            if (currentMode === 'opposition') {
+                const dx = earthPos.x - marsPos.x, dy = earthPos.y - marsPos.y;
+                distAU = (Math.sqrt(dx*dx + dy*dy) / AU).toFixed(3);
+            } else {
+                const dx = earthPos.x - venusPos.x, dy = earthPos.y - venusPos.y;
+                distAU = (Math.sqrt(dx*dx + dy*dy) / AU).toFixed(3);
+            }
+            distanceDisplay.innerText = distAU + ' AU';
+
+            const posType = getPositionType(earthAngle, targetAngle);
+            let statusText = '常规';
+            if (isEvent) {
+                statusText = (currentMode === 'opposition') ? '🔴 火星冲日!' : '🌑 金星凌日!';
+                statusDisplay.classList.add('special');
+            } else {
+                statusDisplay.classList.remove('special');
+                if (posType === '地球在中间' && diff < 0.30) {
+                    statusText = '接近冲日/凌日';
+                } else if (posType === '太阳在中间') {
+                    statusText = '合日 (太阳在中间)';
+                } else {
+                    statusText = '常规';
+                }
+            }
+            statusDisplay.innerText = statusText;
+
+            const baseDate = new Date(2026, 5, 16);
+            const simDate = new Date(baseDate.getTime() + day * 86400000);
+            const dateStr = simDate.toISOString().slice(0,10);
+            dateDisplay.innerText = dateStr;
+            dayCounter.innerText = `Day ${Math.round(day)}`;
+
+            Object.values(posTags).forEach(tag => tag.classList.remove('active-tag'));
+            if (posType === '地球在中间') {
+                posTags.pos1.classList.add('active-tag');
+                posTags.pos4.classList.add('active-tag');
+            } else if (posType === '太阳在中间') {
+                posTags.pos2.classList.add('active-tag');
+                posTags.pos3.classList.add('active-tag');
+            }
+
+            return { isEvent, diff, day, distAU, posType };
+        }
+
+        // 计算框（底部详细弹窗）
+        function showCalculation(day, isEvent, mode, distAU, posType) {
+            const baseDate = new Date(2026, 5, 16);
+            const simDate = new Date(baseDate.getTime() + day * 86400000);
+            const dateStr = simDate.toISOString().slice(0,10);
+            const targetName = (mode === 'opposition') ? '火星' : '金星';
+            const period = (mode === 'opposition') ? MARS_PERIOD : VENUS_PERIOD;
+            let calcStr = '';
+            if (isEvent) {
+                const eventName = (mode === 'opposition') ? '火星冲日' : '金星凌日';
+                calcStr = `✦ ${eventName} 事件 ✦\n`;
+                calcStr += `📅 日期: ${dateStr}\n`;
+                calcStr += `📏 ${targetName} 与地球距离: ${distAU} AU\n`;
+                if (mode === 'opposition') {
+                    const distVal = parseFloat(distAU);
+                    if (distVal < 0.6) calcStr += `🔴 冲日类型：**大冲** (距离极近，视直径最大)\n`;
+                    else calcStr += `🟠 冲日类型：**小冲** (距离较远，视直径较小)\n`;
+                }
+                calcStr += `🔢 计算过程:\n  地球周期 T_E = ${EARTH_PERIOD} 天\n  ${targetName}周期 T = ${period} 天\n`;
+                calcStr += `  相对角速度 Δω = 2π(1/T_E - 1/T)\n  从初始相位起，经过 day = ${Math.round(day)} 天达到共线。\n`;
+                calcStr += `✅ 三点共线 (太阳-地球-${targetName}) 且地球在中间。\n📐 共线位置: ${posType}`;
+            } else {
+                calcStr = `⏳ 未触发事件 (角度差 > 0.04 rad)\n  继续模拟 ...`;
+            }
+            calcContent.innerText = calcStr;
+            calcBox.classList.add('show');
+        }
+
+        // 核心更新 (带事件去重)
+        function updateSceneFromDay(day) {
+            const { isEvent, diff, day: d, distAU, posType } = drawScene(day);
+            // 更新滑块位置以保持同步
+            const sliderVal = ((d - rangeStartDay) / (rangeEndDay - rangeStartDay)) * 1000;
+            timeSlider.value = Math.min(1000, Math.max(0, sliderVal));
+
+            // 关键修改：只有从未触发变为触发时才弹窗
+            if (isEvent && !lastEventState) {
+                showCalculation(d, true, currentMode, distAU, posType);
+            }
+            // 如果事件结束且弹窗还在，可以保持计算框显示，也可以选择关闭
+            // 我们保留计算框，让用户手动关闭
+
+            // 更新历史状态
+            lastEventState = isEvent;
+
+            return { isEvent, diff, d, distAU, posType };
+        }
+
+        // 动画循环 (无暂停)
+        function startAnimation() {
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            isPlaying = true;
+            playPauseBtn.innerText = '⏸️ 暂停';
+            // 重置事件状态，防止重复触发
+            lastEventState = false;
+            let lastTimestamp = performance.now();
+
+            function stepAnim(timestamp) {
+                if (!isPlaying) { animFrameId = null; return; }
+
+                const delta = (timestamp - lastTimestamp) / 1000.0;
+                lastTimestamp = timestamp;
+                // 限制单帧最大步长，防止跳帧
+                const rawStep = speedDaysPerSec * delta;
+                const step = Math.min(rawStep, 0.8); 
+                animDay += step * animDirection;
+
+                // 边界检查
+                if (animDay > rangeEndDay) { animDay = rangeEndDay; animDirection = -1; }
+                if (animDay < rangeStartDay) { animDay = rangeStartDay; animDirection = 1; }
+
+                // 更新场景
+                updateSceneFromDay(animDay);
+
+                // 边缘暂停（到达终点/起点）
+                if (animDay >= rangeEndDay || animDay <= rangeStartDay) {
+                    stopAnimation();
+                    playPauseBtn.innerText = '▶ 自动 (边界暂停)';
+                    return;
+                }
+
+                animFrameId = requestAnimationFrame(stepAnim);
+            }
+            animFrameId = requestAnimationFrame(stepAnim);
+        }
+
+        function stopAnimation() {
+            isPlaying = false;
+            if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+            playPauseBtn.innerText = '▶ 自动';
+        }
+
+        function resetSim() {
+            stopAnimation();
+            timeSlider.value = 500;
+            const day = (500 / 1000) * (rangeEndDay - rangeStartDay) + rangeStartDay;
+            lastEventState = false; // 重置事件状态
+            updateSceneFromDay(day);
+            calcBox.classList.remove('show');
+            animDay = day; animDirection = 1;
+            playPauseBtn.innerText = '▶ 自动';
+        }
+        
+        function applyRange() {
+            const startVal = startDateInput.value, endVal = endDateInput.value;
+            if (startVal && endVal) {
+                const base = new Date(2026, 5, 16);
+                const start = new Date(startVal), end = new Date(endVal);
+                if (isNaN(start.getTime()) || isNaN(end.getTime())) { alert('日期无效！请检查格式。'); return; }
+                const diffStart = (start - base) / 86400000, diffEnd = (end - base) / 86400000;
+                if (isNaN(diffStart) || isNaN(diffEnd)) { alert('日期转换错误'); return; }
+                if (diffStart < diffEnd) {
+                    rangeStartDay = diffStart; rangeEndDay = diffEnd;
+                    animDay = Math.max(rangeStartDay, Math.min(rangeEndDay, animDay));
+                    resetSim();
+                } else { alert('起始日期需早于结束日期'); }
+            }
+        }
+
+        // 绑定事件
+        modeBtns.forEach(btn => { btn.addEventListener('click', function() { modeBtns.forEach(b => b.classList.remove('active')); this.classList.add('active'); currentMode = this.dataset.mode; resetSim(); stopAnimation(); }); });
+        timeSlider.addEventListener('input', function() { 
+            if (isPlaying) stopAnimation(); 
+            const val = parseFloat(this.value); 
+            const day = (val / 1000) * (rangeEndDay - rangeStartDay) + rangeStartDay; 
+            lastEventState = false; // 手动拖动时重置状态，避免残留逻辑
+            updateSceneFromDay(day); 
+            calcBox.classList.remove('show'); 
+        });
+        resetBtn.addEventListener('click', resetSim);
+        applyRangeBtn.addEventListener('click', applyRange);
+        playPauseBtn.addEventListener('click', function() { 
+            if (isPlaying) { 
+                stopAnimation(); 
+            } else { 
+                const val = parseFloat(timeSlider.value); 
+                animDay = (val / 1000) * (rangeEndDay - rangeStartDay) + rangeStartDay; 
+                if (animDay < rangeStartDay) animDay = rangeStartDay; 
+                if (animDay > rangeEndDay) animDay = rangeEndDay; 
+                lastEventState = false; // 启动动画时重置
+                startAnimation(); 
+            } 
+        });
+        predictBtn.addEventListener('click', function() { 
+            stopAnimation(); 
+            const currentDay = (parseFloat(timeSlider.value) / 1000) * (rangeEndDay - rangeStartDay) + rangeStartDay; 
+            let bestDay = currentDay, bestDiff = Infinity; 
+            for (let d = currentDay - 800; d <= currentDay + 800; d += 0.8) { 
+                updateAngles(d); 
+                let diff = 0; 
+                const target = (currentMode === 'opposition') ? marsAngle : venusAngle; 
+                diff = Math.min(Math.abs(earthAngle - target), 2*Math.PI - Math.abs(earthAngle - target)); 
+                if (diff < bestDiff) { bestDiff = diff; bestDay = d; } 
+            } 
+            if (bestDiff < 0.20) { 
+                const sliderVal = ((bestDay - rangeStartDay) / (rangeEndDay - rangeStartDay)) * 1000; 
+                timeSlider.value = Math.min(1000, Math.max(0, sliderVal)); 
+                // 强制重置事件状态，以便重新触发
+                lastEventState = false; 
+                const { isEvent, distAU, posType } = updateSceneFromDay(bestDay); 
+                if (isEvent) {
+                    showCalculation(bestDay, true, currentMode, distAU, posType);
+                } else {
+                    alert('该位置未检测到冲日/凌日，可能是角度差略大');
+                }
+            } else { alert('未找到显著事件，请调整滑块范围'); } 
+        });
+        calcClose.addEventListener('click', function() { calcBox.classList.remove('show'); });
+        speedSlider.addEventListener('input', function() { speedDaysPerSec = parseFloat(this.value); speedDisplay.innerText = Math.round(speedDaysPerSec); });
+
+        // 初始化
+        resetSim();
+        const baseDate = new Date(2026, 5, 16);
+        const startDefault = new Date(2026, 6, 1);
+        const endDefault = new Date(2035, 9, 15);
+        startDateInput.value = startDefault.toISOString().slice(0,10);
+        endDateInput.value = endDefault.toISOString().slice(0,10);
+        applyRange();
+        speedDisplay.innerText = Math.round(speedDaysPerSec);
+    })();
+</script>
+</body>
+</html>
