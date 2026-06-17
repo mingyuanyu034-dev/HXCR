@@ -238,7 +238,7 @@
         ctx.fill();
 
         // Label
-        ctx.font = '12px "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.font = '12px "LXGW WenKai", "PingFang SC", "Microsoft YaHei", sans-serif';
         ctx.fillStyle = 'rgba(216,226,244,0.6)';
         ctx.fillText(label, pos.x + radius + 10, pos.y - 3);
     }

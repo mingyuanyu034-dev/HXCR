@@ -24,9 +24,9 @@
     --glow-venus: rgba(212, 192, 106, 0.18);
     --glow-sun: rgba(245, 179, 66, 0.35);
 
-    --font-display: "Noto Serif SC", "Source Han Serif SC", "SimSun", "Songti SC", serif;
-    --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif;
-    --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Courier New", monospace;
+    --font-display: "LXGW WenKai", "Songti SC", "STSong", "Noto Serif SC", serif;
+    --font-body: "LXGW WenKai", "PingFang SC", "Microsoft YaHei", "Heiti SC", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Consolas", monospace;
 
     --radius-sm: 6px;
     --radius-md: 14px;
@@ -44,14 +44,13 @@
 body {
     background: var(--space-void);
     font-family: var(--font-body);
-    font-weight: 300;
+    font-weight: 400;
     min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
     color: var(--text-primary);
-    -webkit-font-smoothing: antialiased;
     text-wrap: pretty;
     /* Ambient static starfield on body */
     background-image:
@@ -324,7 +323,7 @@ canvas {
     border-radius: var(--radius-full);
     font-family: var(--font-body);
     font-size: 0.72rem;
-    font-weight: 300;
+    font-weight: 400;
     color: var(--text-secondary);
     border: 1px solid rgba(255,255,255,0.04);
     letter-spacing: 0.03em;
@@ -447,7 +446,7 @@ canvas {
     color: var(--text-secondary);
     font-family: var(--font-body);
     font-size: 0.72rem;
-    font-weight: 300;
+    font-weight: 400;
     letter-spacing: 0.05em;
 }
 .speed-control span:last-child {
@@ -470,7 +469,7 @@ canvas {
     font-family: var(--font-body);
     color: var(--text-muted);
     font-size: 0.7rem;
-    font-weight: 300;
+    font-weight: 400;
     letter-spacing: 0.05em;
 }
 
@@ -658,7 +657,7 @@ canvas {
 .tweak-row > span:first-child {
     font-family: var(--font-body);
     font-size: 0.7rem;
-    font-weight: 300;
+    font-weight: 400;
     letter-spacing: 0.05em;
     color: var(--text-muted);
 }
