@@ -52,27 +52,6 @@ body {
     padding: 20px;
     color: var(--text-primary);
     text-wrap: pretty;
-    /* Ambient static starfield on body */
-    background-image:
-        radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1px 1px at 25% 35%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1.5px 1.5px at 40% 10%, rgba(255,255,255,0.5), transparent),
-        radial-gradient(1px 1px at 55% 60%, rgba(255,255,255,0.35), transparent),
-        radial-gradient(1.5px 1.5px at 70% 20%, rgba(255,255,255,0.45), transparent),
-        radial-gradient(1px 1px at 85% 55%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1px 1px at 15% 75%, rgba(255,255,255,0.35), transparent),
-        radial-gradient(1.5px 1.5px at 60% 80%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1px 1px at 92% 85%, rgba(255,255,255,0.3), transparent),
-        radial-gradient(1px 1px at 33% 50%, rgba(255,255,255,0.25), transparent),
-        radial-gradient(1.5px 1.5px at 48% 72%, rgba(255,255,255,0.35), transparent),
-        radial-gradient(1px 1px at 78% 42%, rgba(255,255,255,0.3), transparent);
-    background-size: 200px 200px;
-    animation: bodyStars 6s ease-in-out infinite alternate;
-}
-
-@keyframes bodyStars {
-    0%   { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
-    100% { background-position: 3px -2px, -2px 3px, 1px 1px, -3px 1px, 0px -3px, 2px -1px, -1px -2px, 3px 2px, 0px 2px, -2px 0px, 2px -3px, 1px 3px; }
 }
 
 /* ---- App Container ---- */
@@ -80,8 +59,8 @@ body {
     max-width: 1440px;
     width: 100%;
     background: var(--glass-bg);
-    backdrop-filter: blur(28px) saturate(130%);
-    -webkit-backdrop-filter: blur(28px) saturate(130%);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
     border-radius: var(--radius-xl);
     padding: 32px;
     border: 1px solid var(--glass-border);
@@ -183,8 +162,8 @@ canvas {
     cursor: pointer;
     transition: all 0.45s var(--ease-cosmic);
     text-align: center;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     position: relative;
     overflow: hidden;
     user-select: none;
@@ -241,8 +220,8 @@ canvas {
 /* ---- Info Card ---- */
 .info-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border-radius: var(--radius-lg);
     padding: 18px 22px;
     border: 1px solid var(--glass-border);
@@ -407,8 +386,8 @@ canvas {
     letter-spacing: 0.05em;
     cursor: pointer;
     transition: all 0.35s var(--ease-cosmic);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     white-space: nowrap;
     user-select: none;
 }
@@ -494,8 +473,8 @@ canvas {
 /* ---- Calculation Box ---- */
 .calc-box {
     background: rgba(2,10,22,0.88);
-    backdrop-filter: blur(26px) saturate(130%);
-    -webkit-backdrop-filter: blur(26px) saturate(130%);
+    backdrop-filter: blur(13px) saturate(130%);
+    -webkit-backdrop-filter: blur(13px) saturate(130%);
     border-radius: var(--radius-lg);
     padding: 20px 22px;
     border: 1px solid rgba(255,255,255,0.07);
@@ -569,8 +548,8 @@ canvas {
     border-radius: 50%;
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     color: var(--text-secondary);
     display: flex;
     align-items: center;
@@ -599,8 +578,8 @@ canvas {
     right: 28px;
     width: 240px;
     background: rgba(2,10,24,0.92);
-    backdrop-filter: blur(28px) saturate(140%);
-    -webkit-backdrop-filter: blur(28px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: var(--radius-md);
     padding: 0;

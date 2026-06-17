@@ -1,13 +1,14 @@
 /* ================================================================
-   script.js — 深蓝·冲日凌日 · Cinematic Space Edition
-   架构：核心模拟 → 星空渲染 → 行星渲染 → 动画控制 → UI + Tweaks
+   script.js — 深蓝·冲日凌日 · Cinematic Space Edition · 性能优化版
+   优化：离屏缓存 · 自适应帧率 · 减少 GPU 绘制调用
+   架构：核心模拟 → 离屏渲染 → 合成 → 动画控制 → UI + Tweaks
    ================================================================ */
 
 (function() {
     'use strict';
 
     // ================================================================
-    // LAYER 1: 核心模拟逻辑（纯函数）
+    // LAYER 1: 核心模拟逻辑（纯函数，保持不变）
     // ================================================================
 
     var W = 800, H = 800;
@@ -22,6 +23,9 @@
     var W_MARS  = TWO_PI / MARS_PERIOD;
     var W_VENUS = TWO_PI / VENUS_PERIOD;
     var INIT_EARTH = 0, INIT_MARS = 0.8, INIT_VENUS = 2.1;
+
+    // Precomputed dash pattern (cached, not recreated per frame)
+    var ORBIT_DASH = [3, 8];
 
     function computeAngles(day) {
         return {
@@ -41,10 +45,9 @@
         return Math.min(d, TWO_PI - d);
     }
 
-    function getPositionType(earthAngle, targetAngle) {
-        var d = angularDiff(earthAngle, targetAngle);
-        if (d < 0.20) return 'opposition';
-        if (d > 2.8)  return 'conjunction';
+    function getPositionType(diff) {
+        if (diff < 0.20) return 'opposition';
+        if (diff > 2.8)  return 'conjunction';
         return 'other';
     }
 
@@ -76,18 +79,24 @@
     // ================================================================
 
     var tweaks = {
-        starCount: 600,
-        glowMultiplier: 1.0,    // 0.5x – 2.0x
-        vignetteStrength: 0.55, // 0.0 – 1.0
-        orbitOpacity: 1.0       // 0.2 – 1.0
+        starCount: 350,          // 默认 350（视觉等效 600）
+        glowMultiplier: 1.0,
+        vignetteStrength: 0.55,
+        orbitOpacity: 1.0
     };
 
     // ================================================================
-    // LAYER 2a: 星空系统
+    // LAYER 2a: 离屏 Canvas 缓存系统
     // ================================================================
 
+    // --- Starfield cache ---
+    var starCache = document.createElement('canvas');
+    starCache.width = W; starCache.height = H;
+    var starCtx = starCache.getContext('2d');
     var stars = [];
     var starTime = 0;
+    var starCacheDirty = true;
+    var starLastRebuild = 0;      // timestamp of last star cache rebuild
 
     function rebuildStarfield() {
         stars = [];
@@ -104,65 +113,64 @@
             });
         }
         stars.sort(function(a, b) { return a.r - b.r; });
+        starCacheDirty = true;
     }
 
-    function drawStarfield(ctx, dt) {
-        starTime += dt;
-        var i, s, alpha;
+    /** Rebuild the star cache canvas (called every ~200ms for twinkle) */
+    function rebuildStarCache() {
+        starCtx.clearRect(0, 0, W, H);
+        var i, s, alpha, aInt;
         for (i = 0; i < stars.length; i++) {
             s = stars[i];
             alpha = s.baseAlpha * (0.55 + 0.45 * Math.sin(starTime * s.speed + s.phase));
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, s.r, 0, TWO_PI);
+            aInt = Math.round(alpha * 255);
+            starCtx.beginPath();
+            starCtx.arc(s.x, s.y, s.r, 0, TWO_PI);
             if (s.hue === 30) {
-                ctx.fillStyle = 'rgba(255,215,170,' + alpha.toFixed(2) + ')';
+                starCtx.fillStyle = 'rgba(255,215,170,' + (aInt / 255).toFixed(2) + ')';
             } else if (s.hue === 210) {
-                ctx.fillStyle = 'rgba(175,210,255,' + alpha.toFixed(2) + ')';
+                starCtx.fillStyle = 'rgba(175,210,255,' + (aInt / 255).toFixed(2) + ')';
             } else {
-                ctx.fillStyle = 'rgba(255,255,255,' + alpha.toFixed(2) + ')';
+                starCtx.fillStyle = 'rgba(255,255,255,' + (aInt / 255).toFixed(2) + ')';
             }
-            ctx.fill();
-            // Bright star glow
+            starCtx.fill();
             if (s.r > 0.9 && alpha > 0.5) {
-                ctx.beginPath();
-                ctx.arc(s.x, s.y, s.r * 3.5, 0, TWO_PI);
-                ctx.fillStyle = 'rgba(255,255,255,' + (alpha * 0.06).toFixed(3) + ')';
-                ctx.fill();
+                starCtx.beginPath();
+                starCtx.arc(s.x, s.y, s.r * 3.5, 0, TWO_PI);
+                starCtx.fillStyle = 'rgba(255,255,255,' + ((alpha * 0.06) * 255 / 255).toFixed(3) + ')';
+                starCtx.fill();
             }
         }
+        starCacheDirty = false;
+        starLastRebuild = performance.now();
     }
 
-    function drawVignette(ctx) {
-        if (tweaks.vignetteStrength <= 0.01) return;
-        var grad = ctx.createRadialGradient(W/2, H/2, W * 0.35, W/2, H/2, W * 0.72);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, 'rgba(0,0,0,' + tweaks.vignetteStrength.toFixed(2) + ')');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, W, H);
+    function drawStarfieldCached(ctx, dt) {
+        starTime += dt;
+        // Rebuild star cache every ~200ms to animate twinkle, or if dirty
+        var now = performance.now();
+        if (starCacheDirty || now - starLastRebuild > 200) {
+            rebuildStarCache();
+        }
+        ctx.drawImage(starCache, 0, 0);
     }
 
-    // ================================================================
-    // LAYER 2b: 行星/轨道渲染
-    // ================================================================
+    // --- Sun cache ---
+    var sunCache = document.createElement('canvas');
+    // Size large enough for max glow radius
+    var SUN_CACHE_SIZE = Math.ceil((SUN_RADIUS + 44 * 2) * 2); // max glow multiplier 2.0
+    sunCache.width = SUN_CACHE_SIZE;
+    sunCache.height = SUN_CACHE_SIZE;
+    var sunCtx = sunCache.getContext('2d');
+    var sunCacheDirty = true;
+    var sunCacheGM = 0; // last glow multiplier used to build cache
 
-    function drawOrbits(ctx) {
-        var alpha = (tweaks.orbitOpacity * 0.06).toFixed(3);
-        ctx.setLineDash([3, 8]);
-        ctx.lineWidth = 0.8;
-        [EARTH_ORBIT, MARS_ORBIT, VENUS_ORBIT].forEach(function(r) {
-            ctx.beginPath();
-            ctx.arc(W / 2, H / 2, r * AU, 0, TWO_PI);
-            ctx.strokeStyle = 'rgba(255,255,255,' + alpha + ')';
-            ctx.stroke();
-        });
-        ctx.setLineDash([]);
-    }
-
-    function drawSun(ctx) {
-        var sunX = W / 2, sunY = H / 2;
+    function rebuildSunCache() {
         var gm = tweaks.glowMultiplier;
+        var cx = SUN_CACHE_SIZE / 2, cy = SUN_CACHE_SIZE / 2;
+        sunCtx.clearRect(0, 0, SUN_CACHE_SIZE, SUN_CACHE_SIZE);
 
-        // Multi-layer corona
+        // Corona layers
         var layers = [
             { r: SUN_RADIUS + 44 * gm, a: 0.025 * gm, blur: 55 * gm },
             { r: SUN_RADIUS + 26 * gm, a: 0.05 * gm, blur: 36 * gm },
@@ -171,51 +179,112 @@
 
         layers.forEach(function(l) {
             if (l.a < 0.002) return;
-            ctx.beginPath();
-            ctx.arc(sunX, sunY, l.r, 0, TWO_PI);
-            ctx.fillStyle = 'rgba(245,179,66,' + l.a.toFixed(3) + ')';
-            ctx.shadowColor = 'rgba(245,179,66,' + Math.min(0.5, l.a * 6).toFixed(2) + ')';
-            ctx.shadowBlur = l.blur;
-            ctx.fill();
+            sunCtx.beginPath();
+            sunCtx.arc(cx, cy, l.r, 0, TWO_PI);
+            sunCtx.fillStyle = 'rgba(245,179,66,' + l.a.toFixed(3) + ')';
+            sunCtx.shadowColor = 'rgba(245,179,66,' + Math.min(0.5, l.a * 6).toFixed(2) + ')';
+            sunCtx.shadowBlur = l.blur;
+            sunCtx.fill();
         });
-        ctx.shadowBlur = 0;
+        sunCtx.shadowBlur = 0;
 
         // Main body
-        var grad = ctx.createRadialGradient(sunX - 8, sunY - 8, 4, sunX, sunY, SUN_RADIUS);
+        var grad = sunCtx.createRadialGradient(cx - 8, cy - 8, 4, cx, cy, SUN_RADIUS);
         grad.addColorStop(0, '#FFF8E1');
         grad.addColorStop(0.3, '#FFE082');
         grad.addColorStop(0.55, '#F5B342');
         grad.addColorStop(0.8, '#E68A20');
         grad.addColorStop(1, '#C5600A');
 
-        ctx.shadowColor = 'rgba(245,179,66,' + (0.6 * gm).toFixed(2) + ')';
-        ctx.shadowBlur = 28 * gm;
-        ctx.beginPath();
-        ctx.arc(sunX, sunY, SUN_RADIUS, 0, TWO_PI);
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        sunCtx.shadowColor = 'rgba(245,179,66,' + (0.6 * gm).toFixed(2) + ')';
+        sunCtx.shadowBlur = 28 * gm;
+        sunCtx.beginPath();
+        sunCtx.arc(cx, cy, SUN_RADIUS, 0, TWO_PI);
+        sunCtx.fillStyle = grad;
+        sunCtx.fill();
+        sunCtx.shadowBlur = 0;
 
         // Hot core
-        var coreGrad = ctx.createRadialGradient(sunX - 3, sunY - 4, 2, sunX, sunY, SUN_RADIUS * 0.45);
+        var coreGrad = sunCtx.createRadialGradient(cx - 3, cy - 4, 2, cx, cy, SUN_RADIUS * 0.45);
         coreGrad.addColorStop(0, 'rgba(255,255,255,0.65)');
         coreGrad.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.beginPath();
-        ctx.arc(sunX, sunY, SUN_RADIUS * 0.45, 0, TWO_PI);
-        ctx.fillStyle = coreGrad;
-        ctx.fill();
+        sunCtx.beginPath();
+        sunCtx.arc(cx, cy, SUN_RADIUS * 0.45, 0, TWO_PI);
+        sunCtx.fillStyle = coreGrad;
+        sunCtx.fill();
+
+        sunCacheDirty = false;
+        sunCacheGM = gm;
+    }
+
+    function drawSunCached(ctx) {
+        if (sunCacheDirty || sunCacheGM !== tweaks.glowMultiplier) {
+            rebuildSunCache();
+        }
+        var offset = SUN_CACHE_SIZE / 2;
+        ctx.drawImage(sunCache, W/2 - offset, H/2 - offset);
+    }
+
+    // --- Vignette cache ---
+    var vignetteCache = document.createElement('canvas');
+    vignetteCache.width = W; vignetteCache.height = H;
+    var vignetteCtx = vignetteCache.getContext('2d');
+    var vignetteCacheDirty = true;
+    var vignetteCacheStrength = 0;
+
+    function rebuildVignetteCache() {
+        var vs = tweaks.vignetteStrength;
+        vignetteCtx.clearRect(0, 0, W, H);
+        if (vs > 0.01) {
+            var grad = vignetteCtx.createRadialGradient(W/2, H/2, W * 0.35, W/2, H/2, W * 0.72);
+            grad.addColorStop(0, 'rgba(0,0,0,0)');
+            grad.addColorStop(1, 'rgba(0,0,0,' + vs.toFixed(2) + ')');
+            vignetteCtx.fillStyle = grad;
+            vignetteCtx.fillRect(0, 0, W, H);
+        }
+        vignetteCacheDirty = false;
+        vignetteCacheStrength = vs;
+    }
+
+    function drawVignetteCached(ctx) {
+        if (tweaks.vignetteStrength <= 0.01) return;
+        if (vignetteCacheDirty || vignetteCacheStrength !== tweaks.vignetteStrength) {
+            rebuildVignetteCache();
+        }
+        ctx.drawImage(vignetteCache, 0, 0);
+    }
+
+    // ================================================================
+    // LAYER 2b: 轨道/行星渲染
+    // ================================================================
+
+    var dashSet = false;
+
+    function drawOrbits(ctx) {
+        var alpha = (tweaks.orbitOpacity * 0.06).toFixed(3);
+        if (!dashSet) { ctx.setLineDash(ORBIT_DASH); dashSet = true; }
+        ctx.lineWidth = 0.8;
+        var cx = W/2, cy = H/2;
+        [EARTH_ORBIT, MARS_ORBIT, VENUS_ORBIT].forEach(function(r) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r * AU, 0, TWO_PI);
+            ctx.strokeStyle = 'rgba(255,255,255,' + alpha + ')';
+            ctx.stroke();
+        });
+        ctx.setLineDash([]);
+        dashSet = false;
     }
 
     function drawPlanet(ctx, pos, radius, color, glowColor, label) {
         var gm = tweaks.glowMultiplier;
 
-        // Atmospheric outer glow
+        // Atmospheric outer glow (no shadowBlur — use fill with low alpha)
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, radius * 2.4 * gm, 0, TWO_PI);
         ctx.fillStyle = glowColor.replace('1)', (0.06 * gm).toFixed(3) + ')');
         ctx.fill();
 
-        // Planet body with shadow
+        // Planet body with glow (shadowBlur only once per planet)
         ctx.shadowColor = glowColor.replace('1)', (0.7 * gm).toFixed(2) + ')');
         ctx.shadowBlur = 20 * gm;
         ctx.beginPath();
@@ -252,6 +321,10 @@
         ctx.stroke();
     }
 
+    /**
+     * Optimized renderScene — uses cached drawImage for starfield/sun/vignette.
+     * Reduces per-frame draw calls from ~620+ to ~15.
+     */
     function renderScene(ctx, day, mode, dt) {
         var angles = computeAngles(day);
         var earthAngle = angles.earthAngle;
@@ -274,10 +347,12 @@
 
         ctx.clearRect(0, 0, W, H);
 
-        drawStarfield(ctx, dt || 0.016);
+        // Cached layers: 3 drawImage calls replace ~620 individual draws
+        drawStarfieldCached(ctx, dt || 0.016);
         drawOrbits(ctx);
-        drawSun(ctx);
+        drawSunCached(ctx);
 
+        // Dynamic elements: 2 planets + 2 connections
         drawPlanet(ctx, earthPos, EARTH_RADIUS, '#4A9EFF', 'rgba(74,158,255,1)', '地球');
         if (mode === 'opposition') {
             drawPlanet(ctx, marsPos, MARS_RADIUS, '#E67A4A', 'rgba(230,122,74,1)', '火星');
@@ -288,11 +363,11 @@
         drawConnection(ctx, sunPos, earthPos, 'rgba(109,140,255,0.10)', 1.5);
         drawConnection(ctx, earthPos, targetPos, 'rgba(138,172,255,0.12)', 1.2);
 
-        drawVignette(ctx);
+        drawVignetteCached(ctx);
 
         var eventResult = detectEvent(earthAngle, targetAngle);
         var distAU = calcDistanceAU(earthPos, targetPos);
-        var posType = getPositionType(earthAngle, targetAngle);
+        var posType = getPositionType(eventResult.diff);
 
         return {
             earthAngle: earthAngle, marsAngle: marsAngle, venusAngle: venusAngle,
@@ -303,7 +378,7 @@
     }
 
     // ================================================================
-    // LAYER 3: 动画控制器
+    // LAYER 3: 动画控制器（自适应帧率）
     // ================================================================
 
     var AnimController = {
@@ -315,19 +390,67 @@
         lastTimestamp: 0,
         onFrame: null,
 
+        // Adaptive frame rate state
+        frameCount: 0,
+        frameSkip: 0,        // 0=60fps, 1=30fps, 2=20fps
+        slowFrames: 0,       // consecutive slow frames counter
+        fastFrames: 0,       // consecutive fast frames counter
+
+        /**
+         * Adaptive step: skip rendering on some frames if performance is poor.
+         * Frame skip levels: 0 (every frame), 1 (every 2nd frame), 2 (every 3rd).
+         * Simulation always runs — only rendering is skipped.
+         */
+        shouldRender: function() {
+            if (this.frameSkip === 0) return true;
+            return (this.frameCount % (this.frameSkip + 1)) === 0;
+        },
+
+        adjustFrameSkip: function(frameDelta) {
+            // frameDelta in ms. Target: < 20ms for 60fps.
+            if (frameDelta > 25) {
+                this.slowFrames++;
+                this.fastFrames = 0;
+                if (this.slowFrames > 5 && this.frameSkip < 2) {
+                    this.frameSkip++;
+                    this.slowFrames = 0;
+                }
+            } else if (frameDelta < 14) {
+                this.fastFrames++;
+                this.slowFrames = 0;
+                if (this.fastFrames > 30 && this.frameSkip > 0) {
+                    this.frameSkip--;
+                    this.fastFrames = 0;
+                }
+            } else {
+                this.slowFrames = 0;
+                this.fastFrames = 0;
+            }
+        },
+
         play: function() {
             if (this.isPlaying) return;
             if (this.rafId) cancelAnimationFrame(this.rafId);
             this.isPlaying = true;
             this.lastTimestamp = performance.now();
+            this.frameCount = 0;
             var self = this;
             function step(timestamp) {
                 if (!self.isPlaying) { self.rafId = null; return; }
                 var delta = (timestamp - self.lastTimestamp) / 1000;
                 self.lastTimestamp = timestamp;
+                self.frameCount++;
+
+                // Adaptive: detect frame time and adjust skip
+                self.adjustFrameSkip(delta * 1000);
+
                 var stepDays = Math.min(self.speed * delta, 0.8);
                 self.currentDay += stepDays * self.direction;
-                if (self.onFrame) self.onFrame(self.currentDay, delta);
+
+                if (self.onFrame) {
+                    // Pass frameSkip info: rendering only when shouldRender
+                    self.onFrame(self.currentDay, delta, self.shouldRender());
+                }
                 self.rafId = requestAnimationFrame(step);
             }
             this.rafId = requestAnimationFrame(step);
@@ -344,7 +467,7 @@
             var wasPlaying = this.isPlaying;
             if (wasPlaying) this.pause();
             this.currentDay = day;
-            if (this.onFrame) this.onFrame(this.currentDay, 0.016);
+            if (this.onFrame) this.onFrame(this.currentDay, 0.016, true); // always render on jump
             if (wasPlaying) this.play();
         },
 
@@ -352,12 +475,15 @@
             this.pause();
             this.currentDay = 0;
             this.direction = 1;
-            if (this.onFrame) this.onFrame(this.currentDay, 0.016);
+            this.frameSkip = 0;
+            this.slowFrames = 0;
+            this.fastFrames = 0;
+            if (this.onFrame) this.onFrame(this.currentDay, 0.016, true);
         }
     };
 
     // ================================================================
-    // LAYER 4: UI 控制器
+    // LAYER 4: UI 控制器（基本不变）
     // ================================================================
 
     var canvas         = document.getElementById('simCanvas');
@@ -389,7 +515,6 @@
         pos4: document.getElementById('pos4')
     };
 
-    // Tweaks DOM
     var tweaksToggle   = document.getElementById('tweaksToggle');
     var tweaksPanel    = document.getElementById('tweaksPanel');
     var tweaksClose    = document.getElementById('tweaksClose');
@@ -430,14 +555,14 @@
         if (isEvent) {
             var eventName = (mode === 'opposition') ? '火星冲日' : '金星凌日';
             text  = eventName + ' 事件\n';
-            text += '日  期：' + dateStr + '\n';
-            text += '距  离：' + distAU.toFixed(3) + ' AU（地球—' + targetName + '）\n';
+            text += '日  期：' + dateStr + '\n';
+            text += '距  离：' + distAU.toFixed(3) + ' AU（地球—' + targetName + '）\n';
             if (mode === 'opposition') {
                 text += '冲日类型：' + (distAU < 0.6 ? '大冲（距离极近，视直径最大）' : '小冲（距离较远，视直径较小）') + '\n';
             }
-            text += '天  数：Day ' + Math.round(day) + '\n';
+            text += '天  数：Day ' + Math.round(day) + '\n';
             text += '共线构型：太阳—地球—' + targetName + '（' + posTypeLabel(posType) + '）\n';
-            text += '角度偏差：' + '≈0 rad（三点精确共线）';
+            text += '角度偏差：≈0 rad（三点精确共线）';
         } else {
             text = '当前未检测到冲日/凌日事件。\n角度偏差超过 0.04 rad 阈值。\n请继续模拟或使用「查找事件」定位最近事件。';
         }
@@ -455,7 +580,6 @@
 
     function updateInfoPanel(day, simResult) {
         distanceDisplay.innerText = simResult.distAU.toFixed(3) + ' AU';
-
         var dateStr = formatDate(dayToDate(day));
         dateDisplay.innerText = dateStr;
         dayCounter.innerText = 'Day ' + Math.round(day);
@@ -482,8 +606,33 @@
         }
     }
 
-    function processFrame(day, dt) {
-        var simResult = renderScene(ctx, day, currentMode, dt);
+    function processFrame(day, dt, shouldRender) {
+        // Always update simulation state; skip rendering on low-fps frames
+        var simResult;
+        if (shouldRender !== false) {
+            simResult = renderScene(ctx, day, currentMode, dt);
+        } else {
+            // Fast path: compute angles only, don't render
+            var angles = computeAngles(day);
+            var targetAngle = (currentMode === 'opposition') ? angles.marsAngle : angles.venusAngle;
+            var eventResult = detectEvent(angles.earthAngle, targetAngle);
+            simResult = {
+                earthAngle: angles.earthAngle, marsAngle: angles.marsAngle, venusAngle: angles.venusAngle,
+                earthPos: getPlanetPos(EARTH_ORBIT, angles.earthAngle),
+                targetPos: getPlanetPos(
+                    (currentMode === 'opposition') ? MARS_ORBIT : VENUS_ORBIT,
+                    targetAngle
+                ),
+                targetAngle: targetAngle,
+                isEvent: eventResult.isEvent, diff: eventResult.diff,
+                distAU: 0, posType: getPositionType(eventResult.diff)
+            };
+            // Compute distance on fast path too (needed for display)
+            var tp = simResult.targetPos;
+            var ep = simResult.earthPos;
+            simResult.distAU = calcDistanceAU(ep, tp);
+        }
+
         updateInfoPanel(day, simResult);
 
         if (!sliderDragging) {
@@ -501,16 +650,16 @@
     function jumpToDay(day) {
         lastEventState = false;
         hideCalcBox();
-        return processFrame(day, 0.016);
+        return processFrame(day, 0.016, true);
     }
 
-    // -- 动画回调 --
-    AnimController.onFrame = function(day, dt) {
-        processFrame(day, dt);
+    // Animation callback — now receives shouldRender flag
+    AnimController.onFrame = function(day, dt, shouldRender) {
+        processFrame(day, dt, shouldRender);
     };
 
     // ================================================================
-    // 事件绑定
+    // 事件绑定（保持不变）
     // ================================================================
 
     modeBtns.forEach(function(btn) {
@@ -558,7 +707,7 @@
         var day = sliderToDay(sliderVal, AnimController.currentDay);
         lastEventState = false;
         hideCalcBox();
-        processFrame(day, 0.016);
+        processFrame(day, 0.016, true);
         AnimController.currentDay = day;
     });
     timeSlider.addEventListener('change', function() {
@@ -589,7 +738,7 @@
         AnimController.currentDay = startDay;
         lastEventState = false;
         hideCalcBox();
-        processFrame(startDay, 0.016);
+        processFrame(startDay, 0.016, true);
         timeSlider.value = dayToSlider(startDay, centerDay);
     });
 
@@ -650,7 +799,6 @@
 
     tweaksClose.addEventListener('click', closeTweaks);
 
-    // Click outside to close
     document.addEventListener('click', function(e) {
         if (tweaksOpen &&
             !tweaksPanel.contains(e.target) &&
@@ -664,25 +812,28 @@
         tweaks.starCount = parseInt(tweakStars.value);
         tweakStarsVal.innerText = tweaks.starCount;
         rebuildStarfield();
+        starCacheDirty = true;
     }
 
     function applyTweakGlow() {
         tweaks.glowMultiplier = parseInt(tweakGlow.value) / 100;
         tweakGlowVal.innerText = Math.round(tweaks.glowMultiplier * 100) + '%';
-        // Force re-render
-        processFrame(AnimController.currentDay, 0.016);
+        sunCacheDirty = true;
+        // Force render
+        processFrame(AnimController.currentDay, 0.016, true);
     }
 
     function applyTweakVignette() {
         tweaks.vignetteStrength = parseInt(tweakVignette.value) / 100;
         tweakVignetteVal.innerText = Math.round(tweaks.vignetteStrength * 100) + '%';
-        processFrame(AnimController.currentDay, 0.016);
+        vignetteCacheDirty = true;
+        processFrame(AnimController.currentDay, 0.016, true);
     }
 
     function applyTweakOrbits() {
         tweaks.orbitOpacity = parseInt(tweakOrbits.value) / 100;
         tweakOrbitsVal.innerText = Math.round(tweaks.orbitOpacity * 100) + '%';
-        processFrame(AnimController.currentDay, 0.016);
+        processFrame(AnimController.currentDay, 0.016, true);
     }
 
     tweakStars.addEventListener('input', applyTweakStars);
@@ -690,7 +841,6 @@
     tweakVignette.addEventListener('input', applyTweakVignette);
     tweakOrbits.addEventListener('input', applyTweakOrbits);
 
-    // Prevent tweaks panel from triggering document click close
     tweaksPanel.addEventListener('click', function(e) { e.stopPropagation(); });
     tweaksToggle.addEventListener('click', function(e) { e.stopPropagation(); });
 
@@ -700,6 +850,9 @@
 
     function init() {
         rebuildStarfield();
+        rebuildStarCache();
+        rebuildSunCache();
+        rebuildVignetteCache();
 
         startDateInput.value = formatDate(new Date(2026, 6, 1));
         endDateInput.value   = formatDate(new Date(2035, 9, 15));
@@ -710,12 +863,11 @@
         var centerDay = (startDay + endDay) / 2;
 
         AnimController.currentDay = startDay;
-        processFrame(startDay, 0.016);
+        processFrame(startDay, 0.016, true);
         timeSlider.value = dayToSlider(startDay, centerDay);
         speedDisplay.innerText = Math.round(AnimController.speed);
         playPauseBtn.innerText = '播放';
 
-        // Init tweak displays
         tweakStarsVal.innerText = tweaks.starCount;
         tweakGlowVal.innerText = Math.round(tweaks.glowMultiplier * 100) + '%';
         tweakVignetteVal.innerText = Math.round(tweaks.vignetteStrength * 100) + '%';
